@@ -1,0 +1,34 @@
+{
+  "name": "step-functions-express",
+  "version": "1.0.0",
+  "description": "Example for AWS Steps Functions Express Flow",
+  "main": "handler.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "lint": "eslint .",
+    "lint:fix": "eslint --fix --ext .js ."
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/macias67/step-functions-express.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/macias67/step-functions-express/issues"
+  },
+  "homepage": "https://github.com/macias67/step-functions-express#readme",
+  "devDependencies": {
+    "eslint": "^7.32.0",
+    "eslint-config-airbnb-base": "^14.2.1",
+    "eslint-plugin-import": "^2.24.1",
+    "serverless-dotenv-plugin": "^3.9.0",
+    "serverless-functions-base-path": "^1.0.32",
+    "serverless-plugin-include-dependencies": "^5.0.0",
+    "serverless-prune-plugin": "^1.5.1"
+  },
+  "dependencies": {
+    "axios": "^0.21.1"
+  }
+}
