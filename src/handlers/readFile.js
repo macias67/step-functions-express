@@ -1,8 +1,8 @@
 /* eslint-disable no-console */
-console.log('Loading function');
-
+// console.log('Loading function');
 // eslint-disable-next-line import/no-extraneous-dependencies
 const aws = require('aws-sdk');
+const PushSQS = require('../service/pushSQS');
 
 const s3 = new aws.S3({ apiVersion: '2006-03-01' });
 
@@ -13,25 +13,27 @@ module.exports.index = async (event) => {
   const bucket = event.Records[0].s3.bucket.name;
   const key = decodeURIComponent(event.Records[0].s3.object.key.replace(/\+/g, ' '));
 
-  const params = {
-    Bucket: bucket,
-    Key: key,
-  };
-
   try {
-    const object = await s3.getObject(params).promise();
-
-    console.log('CONTENT TYPE:', object.ContentType);
+    const object = await s3.getObject({
+      Bucket: bucket,
+      Key: key,
+    }).promise();
 
     const data = Buffer.from(object.Body).toString('utf8');
     const movies = JSON.parse(data);
-    console.log(movies.length);
 
-    return object.ContentType;
+    const pushSQS = new PushSQS();
+
+    const promises = [];
+    Object.values(movies).forEach((movie) => {
+      promises.push(pushSQS.sendSimpleMessage(movie));
+    });
+
+    const results = await Promise.allSettled(promises);
+
+    // results.forEach((result) => console.log(JSON.stringify(result)));
   } catch (err) {
-    console.log(err);
-    const message = `Error getting object ${key} from bucket ${bucket}. Make sure they exist and your bucket is in the same region as this function.`;
-    console.log(message);
-    throw new Error(message);
+    console.log(`Error: ${err.message}`);
+    throw new Error(err.message);
   }
 };

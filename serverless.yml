@@ -75,12 +75,13 @@ provider:
             - "s3:ListBucket"
             - "s3:GetObject"
           Resource: arn:aws:s3:::${self:custom.bucket}/*
+        - Effect: "Allow"
+          Action:
+            - "sqs:SendMessage"
+          Resource:
+            Fn::GetAtt: [QueueSQS, Arn]
       tags:
         project: ${self:custom.projectName}
-#    - Effect: "Allow"
-#      Action:
-#        - "s3:PutObject"
-#      Resource:
 #        Fn::Join:
 #          - ""
 #          - - "arn:aws:s3:::"
@@ -134,6 +135,8 @@ functions:
   hello:
       handler: handler.hello
       name: ${self:custom.prefixProject}-hello-${sls:stage}
+      timeout: 15
+      reservedConcurrency: 5
       events:
         - http:
             path: hello
@@ -141,24 +144,27 @@ functions:
   readFile:
     handler: readFile.index
     name: ${self:custom.prefixProject}-readFile-${sls:stage}
+    timeout: 240
+    memorySize: 512
     description: Triggered function to read files from bucket ${self:custom.bucket}
     events:
       - s3:
           bucket:
-            Ref: MoviesFiles
+            Ref: MoviesFilesBucket
           event: s3:ObjectCreated:*
           rules:
             - suffix: .json
           existing: true
-
 #    Define function environment variables here
-#    environment:
-#      variable2: value2
+    environment:
+      SQS_ARN:
+        Fn::GetAtt: [QueueSQS, Arn]
+      SQS_URL: { Ref: QueueSQS }
 
 # you can add CloudFormation resource templates here
 resources:
   Resources:
-    MoviesFiles:
+    MoviesFilesBucket:
       Type: AWS::S3::Bucket
       Properties: 
         BucketName: ${self:custom.bucket}
@@ -169,6 +175,22 @@ resources:
           BlockPublicPolicy: true
           IgnorePublicAcls: true
           RestrictPublicBuckets: true
+        Tags:
+          - Key: project
+            Value: ${self:provider.stackName}
+          - Key: environment
+            Value: ${sls:stage}
+    QueueSQS:
+      Type: AWS::SQS::Queue
+      Properties:
+        QueueName: ${self:custom.prefixProject}-queue-${sls:stage}
+        #DelaySeconds: 5
+        MessageRetentionPeriod: 120 #seconds
+        #ReceiveMessageWaitTimeSeconds: 5
+        #RedrivePolicy:
+          #deadLetterTargetArn: arn
+          #maxReceiveCount: 2
+          #VisibilityTimeout: 30 #seconds
         Tags:
           - Key: project
             Value: ${self:provider.stackName}
