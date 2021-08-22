@@ -72,9 +72,14 @@ provider:
       statements:
         - Effect: "Allow"
           Action:
-            - "s3:ListBucket"
             - "s3:GetObject"
-          Resource: arn:aws:s3:::${self:custom.bucket}/*
+          Resource: arn:aws:s3:::${self:custom.moviesJsonBucket}/*
+        - Effect: "Allow"
+          Action:
+            - "s3:PutObject"
+            - "s3:PutObjectTagging"
+          Resource:
+            - arn:aws:s3:::${self:custom.posterMoviesBucket}/*
         - Effect: "Allow"
           Action:
             - "sqs:SendMessage"
@@ -97,7 +102,8 @@ custom:
   prune:
     automatic: true
     number: 3
-  bucket: movies-file-${sls:stage}
+  moviesJsonBucket: movies-file-${sls:stage}
+  posterMoviesBucket: movies-posters-${sls:stage}
   projectName: step-functions-express
   prefixProject: sfe
 
@@ -146,7 +152,7 @@ functions:
     name: ${self:custom.prefixProject}-readFile-${sls:stage}
     timeout: 240
     memorySize: 512
-    description: Triggered function to read files from bucket ${self:custom.bucket}
+    description: Triggered function to read files from bucket ${self:custom.moviesJsonBucket}
     events:
       - s3:
           bucket:
@@ -162,18 +168,22 @@ functions:
   sqsConsumer:
     handler: sqsConsumer.index
     name: ${self:custom.prefixProject}-sqsConsumer-${sls:stage}
-    description: SQS Consumer
-    reservedConcurrency: 5
+    timeout: 240
+    memorySize: 512
+    description: Function to receive data from SQS and get poster images.
+    reservedConcurrency: 10
     events:
       - sqs:
           arn:
             Fn::GetAtt: [QueueSQS, Arn]
-          batchSize: 100
+          batchSize: 20
           maximumBatchingWindow: 5 # Seconds to wait for a batch
     environment:
       SQS_ARN:
         Fn::GetAtt: [QueueSQS, Arn]
       SQS_URL: { Ref: QueueSQS }
+      POSTER_BUCKET_NAME: ${self:custom.posterMoviesBucket}
+      IMAGE_SIZE: w342
 
 # you can add CloudFormation resource templates here
 resources:
@@ -181,7 +191,23 @@ resources:
     MoviesFilesBucket:
       Type: AWS::S3::Bucket
       Properties: 
-        BucketName: ${self:custom.bucket}
+        BucketName: ${self:custom.moviesJsonBucket}
+        VersioningConfiguration:
+          Status: Suspended
+        PublicAccessBlockConfiguration:
+          BlockPublicAcls: true
+          BlockPublicPolicy: true
+          IgnorePublicAcls: true
+          RestrictPublicBuckets: true
+        Tags:
+          - Key: project
+            Value: ${self:provider.stackName}
+          - Key: environment
+            Value: ${sls:stage}
+    PosterMoviesBucket:
+      Type: AWS::S3::Bucket
+      Properties: 
+        BucketName: ${self:custom.posterMoviesBucket}
         VersioningConfiguration:
           Status: Suspended
         PublicAccessBlockConfiguration:
@@ -204,7 +230,7 @@ resources:
         #RedrivePolicy:
           #deadLetterTargetArn: arn
           #maxReceiveCount: 2
-          #VisibilityTimeout: 30 #seconds
+        VisibilityTimeout: 2 #seconds
         Tags:
           - Key: project
             Value: ${self:provider.stackName}
