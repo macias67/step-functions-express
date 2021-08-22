@@ -155,7 +155,21 @@ functions:
           rules:
             - suffix: .json
           existing: true
-#    Define function environment variables here
+    environment:
+      SQS_ARN:
+        Fn::GetAtt: [QueueSQS, Arn]
+      SQS_URL: { Ref: QueueSQS }
+  sqsConsumer:
+    handler: sqsConsumer.index
+    name: ${self:custom.prefixProject}-sqsConsumer-${sls:stage}
+    description: SQS Consumer
+    reservedConcurrency: 5
+    events:
+      - sqs:
+          arn:
+            Fn::GetAtt: [QueueSQS, Arn]
+          batchSize: 100
+          maximumBatchingWindow: 5 # Seconds to wait for a batch
     environment:
       SQS_ARN:
         Fn::GetAtt: [QueueSQS, Arn]
@@ -185,7 +199,7 @@ resources:
       Properties:
         QueueName: ${self:custom.prefixProject}-queue-${sls:stage}
         #DelaySeconds: 5
-        MessageRetentionPeriod: 120 #seconds
+        #MessageRetentionPeriod: 600 #seconds
         #ReceiveMessageWaitTimeSeconds: 5
         #RedrivePolicy:
           #deadLetterTargetArn: arn

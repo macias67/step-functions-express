@@ -31,12 +31,76 @@ module.exports = class PushSQS {
     };
   }
 
+  // eslint-disable-next-line class-methods-use-this
+  _getParamsToSendMessages(params) {
+    if (!Array.isArray(params)) {
+      throw new Error('Params must be array');
+    }
+
+    const batches = [];
+    let entries = [];
+    let batchSize = 0;
+
+    params.forEach((param) => {
+      const attributes = {
+        Id: `${param.id}`, /* required */
+        MessageBody: JSON.stringify(param), /* required */
+        // DelaySeconds: 'NUMBER_VALUE',
+        MessageAttributes: {
+          Id: {
+            DataType: 'String',
+            StringValue: `${params.id}`,
+          },
+          Title: {
+            DataType: 'String',
+            StringValue: `${params.title}`.toLowerCase(),
+          },
+        },
+      };
+
+      entries.push(attributes);
+      batchSize += 1;
+
+      if (batchSize === 10) {
+        batches.push({
+          Entries: entries,
+          QueueUrl: `${process.env.SQS_URL}`,
+        });
+        entries = [];
+        batchSize = 0;
+      }
+    });
+
+    return batches;
+  }
+
   // eslint-disable-next-line consistent-return
   sendSimpleMessage(params) {
     try {
-      const message = this._getParamsToSendSimpleMessage(params);
+      const batches = this._getParamsToSendSimpleMessage(params);
 
-      return this.SQS.sendMessage(message).promise();
+      const promises = [];
+      batches.forEach((batch) => promises.push(this.SQS.sendMessage(batch).promise()));
+
+      return Promise.allSettled(promises);
+    } catch (error) {
+      throw new Error(error);
+    }
+  }
+
+  sendBatchMessages(params) {
+    try {
+      const batches = this._getParamsToSendMessages(params);
+
+      console.log(`Total batches: ${batches.length}`);
+
+      const promises = [];
+      batches.forEach((batch, i) => {
+        console.log(`Total entries for batch[${i}]: ${batch.Entries.length}`);
+        promises.push(this.SQS.sendMessageBatch(batch).promise());
+      });
+
+      return Promise.all(promises);
     } catch (error) {
       throw new Error(error);
     }

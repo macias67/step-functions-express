@@ -7,8 +7,6 @@ const PushSQS = require('../service/pushSQS');
 const s3 = new aws.S3({ apiVersion: '2006-03-01' });
 
 module.exports.index = async (event) => {
-  console.log('Received event:', JSON.stringify(event, null, 2));
-
   // Get the object from the event and show its content type
   const bucket = event.Records[0].s3.bucket.name;
   const key = decodeURIComponent(event.Records[0].s3.object.key.replace(/\+/g, ' '));
@@ -22,16 +20,20 @@ module.exports.index = async (event) => {
     const data = Buffer.from(object.Body).toString('utf8');
     const movies = JSON.parse(data);
 
+    console.log(`Total movies: ${movies.length}`);
+
     const pushSQS = new PushSQS();
 
-    const promises = [];
+    // Simple Message
+    /* const promises = [];
     Object.values(movies).forEach((movie) => {
       promises.push(pushSQS.sendSimpleMessage(movie));
     });
 
-    const results = await Promise.allSettled(promises);
+    await Promise.allSettled(promises); */
 
-    // results.forEach((result) => console.log(JSON.stringify(result)));
+    // Batch Message
+    await pushSQS.sendBatchMessages(movies);
   } catch (err) {
     console.log(`Error: ${err.message}`);
     throw new Error(err.message);
