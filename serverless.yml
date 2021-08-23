@@ -85,6 +85,11 @@ provider:
             - "sqs:SendMessage"
           Resource:
             Fn::GetAtt: [QueueSQS, Arn]
+        - Effect: "Allow"
+          Action:
+            - states:StartExecution
+            - states:StartSyncExecution
+          Resource: "arn:aws:states:${self:provider.region}:${aws:accountId}:stateMachine:MovieProcessor${self:provider.stage}"
       tags:
         project: ${self:custom.projectName}
 #        Fn::Join:
@@ -136,6 +141,7 @@ plugins:
   - serverless-prune-plugin
   - serverless-plugin-include-dependencies
   - serverless-functions-base-path
+  - serverless-step-functions
 
 functions:
   hello:
@@ -168,7 +174,7 @@ functions:
   sqsConsumer:
     handler: sqsConsumer.index
     name: ${self:custom.prefixProject}-sqsConsumer-${sls:stage}
-    timeout: 240
+    timeout: 10
     memorySize: 512
     description: Function to receive data from SQS and get poster images.
     reservedConcurrency: 10
@@ -183,7 +189,92 @@ functions:
         Fn::GetAtt: [QueueSQS, Arn]
       SQS_URL: { Ref: QueueSQS }
       POSTER_BUCKET_NAME: ${self:custom.posterMoviesBucket}
-      IMAGE_SIZE: w342
+      STATE_MACHINE_ARN: ${self:resources.Outputs.MovieProcessorARN.Value}
+  saveImagePoster:
+    handler: savePosterImage.index
+    name: ${self:custom.prefixProject}-saveImagePoster-${sls:stage}
+    timeout: 120
+    memorySize: 512
+    description: Function to receive data from SQS and save poster images.
+    #reservedConcurrency: 10
+    environment:
+      SQS_ARN:
+        Fn::GetAtt: [QueueSQS, Arn]
+      SQS_URL: { Ref: QueueSQS }
+      POSTER_BUCKET_NAME: ${self:custom.posterMoviesBucket}
+  saveInfoMovies:
+    handler: saveInfoMovies.index
+    name: ${self:custom.prefixProject}-saveInfoMovies-${sls:stage}
+    timeout: 10
+    memorySize: 128
+    description: Save info to database.
+    #reservedConcurrency: 10
+  #   environment:
+  #     SQS_ARN:
+  #       Fn::GetAtt: [QueueSQS, Arn]
+  posterImageFailed:
+    handler: posterImageFailed.index
+    name: ${self:custom.prefixProject}-posterImageFailed-${sls:stage}
+    timeout: 10
+    memorySize: 128
+    description: Process error when trying to get poster images.
+    reservedConcurrency: 1
+
+stepFunctions:
+  stateMachines:
+    MovieProcessor:
+      type: EXPRESS
+      useExactVersion: true
+      loggingConfig:
+        level: ALL
+        includeExecutionData: true
+        destinations:
+          - Fn::GetAtt:
+              - MovieProcessorLogGroup
+              - Arn
+      name: MovieProcessor${self:provider.stage}
+      definition:
+        Comment: State Machine for get all sizes of poster movies.
+        StartAt: GetAllImagesPoster
+        States:
+          GetAllImagesPoster:
+            Type: Map
+            InputPath: "$"
+            ItemsPath: "$.posterInfo.sizes"
+            MaxConcurrency: 10
+            Comment: Get all original poster image.
+            Iterator:
+              StartAt: GetImage
+              States:
+                GetImage:
+                  Type: Task
+                  Resource:
+                    Fn::GetAtt: [saveImagePoster, Arn]
+                  End: true
+            ResultPath: null
+            Catch:
+              - ErrorEquals:
+                  - "States.ALL"
+                Next: PosterImageFailed
+            Next: SetMovieDB
+            #End: true
+          SetMovieDB:
+            Type: Task
+            Resource:
+              Fn::GetAtt: [saveInfoMovies, Arn]
+            Comment: Save info to database.
+            ResultPath: "$"
+            Catch:
+              - ErrorEquals:
+                  - "States.ALL"
+                Next: PosterImageFailed
+            End: true
+          PosterImageFailed:
+            Type: Task
+            Resource:
+              Fn::GetAtt: [posterImageFailed, Arn]
+            Comment: Manage error in poster images.
+            End: true
 
 # you can add CloudFormation resource templates here
 resources:
@@ -208,8 +299,8 @@ resources:
       Type: AWS::S3::Bucket
       Properties: 
         BucketName: ${self:custom.posterMoviesBucket}
-        VersioningConfiguration:
-          Status: Suspended
+        #VersioningConfiguration:
+        #  Status: Suspended
         PublicAccessBlockConfiguration:
           BlockPublicAcls: true
           BlockPublicPolicy: true
@@ -230,12 +321,17 @@ resources:
         #RedrivePolicy:
           #deadLetterTargetArn: arn
           #maxReceiveCount: 2
-        VisibilityTimeout: 2 #seconds
+        VisibilityTimeout: 15 #seconds
         Tags:
           - Key: project
             Value: ${self:provider.stackName}
           - Key: environment
             Value: ${sls:stage}
+    MovieProcessorLogGroup:
+      Type: AWS::Logs::LogGroup
+      Properties:
+        RetentionInDays: 1
+        LogGroupName: sfe-movieProcessorLogGroup-${sls:stage}
 #    CognitoUserPool:
 #      Type: AWS::Cognito::UserPool
 #      Properties:
@@ -254,7 +350,11 @@ resources:
 #            - ADMIN_NO_SRP_AUTH
 #          GenerateSecret: false
 #          PreventUserExistenceErrors: LEGACY
-#  Outputs:
+  Outputs:
+    MovieProcessorARN:
+      Description: ARN for Step Function MovieProcessor
+      Value:
+        Ref: MovieProcessor${self:provider.stage}
 #     NewOutput:
 #       Description: "Description for the output"
 #       Value: "Some output value"

@@ -8,8 +8,8 @@ const axios = require('axios').default;
 const s3 = new aws.S3({ apiVersion: '2006-03-01' });
 
 module.exports = class SaveImage {
-  constructor() {
-    this.size = `${process.env.IMAGE_SIZE}`;
+  constructor(size) {
+    this.size = `${size}`;
     this.baseUrl = `https://image.tmdb.org/t/p/${this.size}`;
   }
 
@@ -60,6 +60,8 @@ module.exports = class SaveImage {
         console.log(`Error al subir Id: ${id} - Title: ${original_title}`);
         console.log(error);
       });
+
+      return promise;
     } catch (error) {
       throw new Error(error);
     }
