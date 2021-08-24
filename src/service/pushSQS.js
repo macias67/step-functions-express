@@ -96,7 +96,7 @@ module.exports = class PushSQS {
 
       const promises = [];
       batches.forEach((batch, i) => {
-        console.log(`Total entries for batch[${i}]: ${batch.Entries.length}`);
+        // console.log(`Total entries for batch[${i}]: ${batch.Entries.length}`);
         promises.push(this.SQS.sendMessageBatch(batch).promise());
       });
 

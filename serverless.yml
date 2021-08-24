@@ -174,7 +174,6 @@ functions:
   sqsConsumer:
     handler: sqsConsumer.index
     name: ${self:custom.prefixProject}-sqsConsumer-${sls:stage}
-    timeout: 10
     memorySize: 512
     description: Function to receive data from SQS and get poster images.
     reservedConcurrency: 10
@@ -189,12 +188,11 @@ functions:
         Fn::GetAtt: [QueueSQS, Arn]
       SQS_URL: { Ref: QueueSQS }
       POSTER_BUCKET_NAME: ${self:custom.posterMoviesBucket}
-      STATE_MACHINE_ARN: ${self:resources.Outputs.MovieProcessorARN.Value}
-  saveImagePoster:
-    handler: savePosterImage.index
-    name: ${self:custom.prefixProject}-saveImagePoster-${sls:stage}
-    timeout: 120
-    memorySize: 512
+      STATE_MACHINE_ARN: ${self:resources.Outputs.MoviesStepMachineARN.Value}
+  # Step Functions FLow
+  getImagePosterToS3:
+    handler: steps/getImagePosterToS3.index
+    name: ${self:custom.prefixProject}-getImagePosterToS3-${sls:stage}
     description: Function to receive data from SQS and save poster images.
     #reservedConcurrency: 10
     environment:
@@ -202,21 +200,17 @@ functions:
         Fn::GetAtt: [QueueSQS, Arn]
       SQS_URL: { Ref: QueueSQS }
       POSTER_BUCKET_NAME: ${self:custom.posterMoviesBucket}
-  saveInfoMovies:
-    handler: saveInfoMovies.index
-    name: ${self:custom.prefixProject}-saveInfoMovies-${sls:stage}
-    timeout: 10
-    memorySize: 128
+  registerMovieDB:
+    handler: steps/registerMovieDB.index
+    name: ${self:custom.prefixProject}-registerMovieDB-${sls:stage}
     description: Save info to database.
     #reservedConcurrency: 10
   #   environment:
   #     SQS_ARN:
   #       Fn::GetAtt: [QueueSQS, Arn]
-  posterImageFailed:
-    handler: posterImageFailed.index
-    name: ${self:custom.prefixProject}-posterImageFailed-${sls:stage}
-    timeout: 10
-    memorySize: 128
+  posterImageException:
+    handler: steps/exceptions/posterImageException.index
+    name: ${self:custom.prefixProject}-posterImageException-${sls:stage}
     description: Process error when trying to get poster images.
     reservedConcurrency: 1
 
@@ -234,46 +228,49 @@ stepFunctions:
               - Arn
       name: MovieProcessor${self:provider.stage}
       definition:
-        Comment: State Machine for get all sizes of poster movies.
-        StartAt: GetAllImagesPoster
+        Comment: State Machine for processing all movies info.
+        StartAt: GetImagePosterToS3
         States:
-          GetAllImagesPoster:
+          GetImagePosterToS3:
             Type: Map
             InputPath: "$"
-            ItemsPath: "$.posterInfo.sizes"
-            MaxConcurrency: 10
+            ItemsPath: "$.imageSizes"
+            MaxConcurrency: 7
             Comment: Get all original poster image.
+            Parameters:
+              size.$: "$$.Map.Item.Value"
+              movie.$: "$.movie"
             Iterator:
               StartAt: GetImage
               States:
                 GetImage:
                   Type: Task
                   Resource:
-                    Fn::GetAtt: [saveImagePoster, Arn]
+                    Fn::GetAtt: [getImagePosterToS3, Arn]
                   End: true
-            ResultPath: null
+            ResultPath: "$"
             Catch:
               - ErrorEquals:
                   - "States.ALL"
-                Next: PosterImageFailed
+                Next: MovieProcessException
             Next: SetMovieDB
             #End: true
           SetMovieDB:
             Type: Task
             Resource:
-              Fn::GetAtt: [saveInfoMovies, Arn]
+              Fn::GetAtt: [registerMovieDB, Arn]
             Comment: Save info to database.
             ResultPath: "$"
             Catch:
               - ErrorEquals:
                   - "States.ALL"
-                Next: PosterImageFailed
+                Next: MovieProcessException
             End: true
-          PosterImageFailed:
+          MovieProcessException:
             Type: Task
             Resource:
-              Fn::GetAtt: [posterImageFailed, Arn]
-            Comment: Manage error in poster images.
+              Fn::GetAtt: [posterImageException, Arn]
+            Comment: Manage error in movie process.
             End: true
 
 # you can add CloudFormation resource templates here
@@ -351,8 +348,8 @@ resources:
 #          GenerateSecret: false
 #          PreventUserExistenceErrors: LEGACY
   Outputs:
-    MovieProcessorARN:
-      Description: ARN for Step Function MovieProcessor
+    MoviesStepMachineARN:
+      Description: ARN for Step Function for movies-processor-machine-${self:provider.stage}
       Value:
         Ref: MovieProcessor${self:provider.stage}
 #     NewOutput:

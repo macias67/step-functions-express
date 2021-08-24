@@ -30,6 +30,7 @@
     "serverless-step-functions": "^3.0.0"
   },
   "dependencies": {
-    "axios": "^0.21.1"
+    "axios": "^0.21.1",
+    "lambda-log": "^3.0.0"
   }
 }

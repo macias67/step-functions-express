@@ -17,17 +17,15 @@ module.exports.index = async (event, context, callback) => {
 
     const inputStep = {
       movie,
-      posterInfo: {
-        sizes: [
-          { size: 'w92', movie },
-          { size: 'w154', movie },
-          { size: 'w185', movie },
-          { size: 'w342', movie },
-          { size: 'w500', movie },
-          { size: 'w780', movie },
-          { size: 'original', movie },
-        ],
-      },
+      imageSizes: [
+        'w92',
+        'w154',
+        'w185',
+        'w342',
+        'w500',
+        'w780',
+        'original',
+      ],
     };
 
     const stepfunctions = new StepFunctions({ apiVersion: '2016-11-23', region: process.env.AWS_REGION });
