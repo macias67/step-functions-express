@@ -1,0 +1,1 @@
+aws s3api put-object --bucket movies-file-dev --key movies_20.json --body /Users/luismacias/Proyectos/step-functions-express/local/movies-json/movies_20.json

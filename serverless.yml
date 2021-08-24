@@ -280,8 +280,8 @@ resources:
       Type: AWS::S3::Bucket
       Properties: 
         BucketName: ${self:custom.moviesJsonBucket}
-        VersioningConfiguration:
-          Status: Suspended
+        #VersioningConfiguration:
+        #  Status: Suspended
         PublicAccessBlockConfiguration:
           BlockPublicAcls: true
           BlockPublicPolicy: true
